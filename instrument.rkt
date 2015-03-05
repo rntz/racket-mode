@@ -110,7 +110,10 @@
 
 (define test-coverage-enabled (make-parameter #f)) ;stacktrace-imports^
 
-(define test-coverage-info (make-hasheq))
+(define test-coverage-info (make-hasheq)) ;(hash/c syntax? mpair?).
+;; This approach taken from DrR. Presumably set-mcar! is faster than a
+;; box, which in turn is faster than hash-set!. The cdr cell is
+;; ignored.
 
 (define (clear-test-coverage-info!)
   (hash-clear! test-coverage-info))
@@ -147,7 +150,8 @@
 
 (define profiling-enabled (make-parameter #f)) ;stacktrace-imports^
 
-(define profile-info (make-hasheq))
+(define profile-info (make-hasheq)) ;(hash/c any/c prof?)
+
 
 (define (clear-profile-info!)
   (hash-clear! profile-info))
