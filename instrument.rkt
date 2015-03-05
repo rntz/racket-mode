@@ -1,13 +1,17 @@
 #lang racket/base
 
-(require (only-in errortrace/errortrace-key errortrace-key)
+(require (only-in errortrace/errortrace-key
+                  errortrace-key)
+         (only-in errortrace/errortrace-lib
+                  print-error-trace
+                  error-context-display-depth)
          errortrace/stacktrace
          racket/match
          racket/unit)
 
 (provide make-instrumented-eval-handler
-         print-error-trace
          error-context-display-depth
+         print-error-trace
          instrumenting-enabled
          test-coverage-enabled
          clear-test-coverage-info!
@@ -21,6 +25,7 @@
 (define instrumenting-enabled (make-parameter #f))
 
 (define ((make-instrumented-eval-handler orig-eval) orig-exp)
+  ;; This is modeled after the one in DrRacket.
   (cond
     [(or (not (instrumenting-enabled))
          (compiled-expression? (if (syntax? orig-exp)
@@ -56,65 +61,49 @@
                           list))]))]
            [_else
             ;; Not `begin', so proceed with normal expand and eval
-            (let ([annotated (annotate-top (expand-syntax top-e)
-                                           (namespace-base-phase))])
+            (let* ([expanded-e (expand-syntax top-e)]
+                   ;; For make-st-mark to work correctly we need to
+                   ;; parameterize original-stx and expanded-stx.
+                   [annotated (parameterize ([original-stx top-e]
+                                             [expanded-stx expanded-e])
+                                (annotate-top expanded-e
+                                              (namespace-base-phase)))])
               ;; (local-require racket/pretty)
               ;; (pretty-write (list (syntax->datum top-e)
               ;;                     "=>"
-              ;;                     (syntax->datum (expand-syntax top-e))
+              ;;                     (syntax->datum expanded-e)
               ;;                     "=>"
               ;;                     (syntax->datum annotated)))
               (orig-eval annotated))])))]))
+
 
 ;;; Better stack traces ("basic errortrace")
 
 (define base-phase
   (variable-reference->module-base-phase (#%variable-reference)))
 
-(define (with-mark src-stx expr phase) ;stacktrace-imports^
-  (define source (cond [(path? (syntax-source src-stx))
-                        (syntax-source src-stx)]
-                       [else #f]))
-  (define position (or (syntax-position src-stx) 0))
-  (define span (or (syntax-span src-stx) 0))
-  (define line (or (syntax-line src-stx) 0))
-  (define column (or (syntax-column src-stx) 0))
-  (define phase-shift (- phase base-phase))
-  (cond [source
-         (with-syntax
-           ([expr expr]
-            [mark (list 'dummy source line column position span)]
-            [wcm (syntax-shift-phase-level #'with-continuation-mark phase-shift)]
-            [errortrace-key errortrace-key]
-            [qte (syntax-shift-phase-level #'quote phase-shift)])
+(define (with-mark mark expr phase)
+  ;; This is modeled after the one in errortrace-lib. Specifically,
+  ;; use `make-st-mark' for its capture of the original syntax to show
+  ;; in the stack trace error message.
+  (match (make-st-mark mark phase)
+    [#f  expr]
+    [loc (define phase-shift (- phase base-phase))
+         (with-syntax ([expr expr]
+                       [loc loc]
+                       [errortrace-key errortrace-key]
+                       [qte (syntax-shift-phase-level #'quote phase-shift)]
+                       [wcm (syntax-shift-phase-level #'with-continuation-mark
+                                                      phase-shift)])
            (syntax (wcm (qte errortrace-key)
-                        (qte mark)
-                        expr)))]
-        [else expr]))
+                        loc
+                        expr)))]))
 
-(define error-context-display-depth
-  (make-parameter 10000
-                  (λ (x) (and (integer? x) x))))
-
-(define (print-error-trace port exn)
-  (for ([_ (in-range (error-context-display-depth))]
-        [cm (in-list (continuation-mark-set->list (exn-continuation-marks exn)
-                                                  errortrace-key))])
-    (match-define (list datum source line col pos span) cm)
-    (define file (cond [(string? source) source]
-                       [(path? source)
-                        (path->string source)]
-                       [(not source)
-                        #f]
-                       [else
-                        (format "~a" source)]))
-    (fprintf port
-             "\n   ~a~a: ~.s"
-             (or file "[unknown source]")
-             (cond [line (format ":~a:~a" line col)]
-                   [pos (format "::~a" pos)]
-                   [else ""])
-             datum)))
+;; print-error-trace
+;;
+;; Just re-provide the one from errortrace-lib because (a) it works
+;; and (b) the `make-st-mark' representation is intentionally not
+;; documented.
 
 
 ;;; Test coverage
@@ -209,6 +198,6 @@
 ;;                [test-coverage-enabled #t]
 ;;                [profiling-enabled #f]
 ;;                [current-eval (make-instrumented-eval-handler (current-eval))])
-;;   (namespace-require (string->path "/tmp/foo.rkt")))
+;;   (namespace-require (string->path "/tmp/simple.rkt")))
 ;; (get-test-coverage-info)
 ;; (get-profile-info)
