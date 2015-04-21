@@ -17,6 +17,7 @@
 ;; http://www.gnu.org/licenses/ for details.
 
 (require 'racket-custom)
+(require 'lisp-mode)
 
 ;; The two top-level commands we care about are:
 ;;   1. `indent-region' C-M-\

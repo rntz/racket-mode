@@ -77,9 +77,6 @@
 
     st))
 
-(defvar racket-mode-abbrev-table nil)
-(define-abbrev-table 'racket-mode-abbrev-table ())
-
 (defconst racket-syntax-propertize-function
   (syntax-propertize-rules
    ;; Handle sexp comments
@@ -133,6 +130,9 @@
                              ;; 12 = comment-end. nil = no matching-char.
                              '(12 . nil)))))))
 
+(defvar racket-abbrev-table nil)
+(define-abbrev-table 'racket-abbrev-table ())
+
 (defun racket--variables-for-both-modes ()
   ;;; Syntax and font-lock stuff.
   (set-syntax-table racket-mode-syntax-table)
@@ -161,7 +161,7 @@
   ;; -----------------------------------------------------------------
   ;;; Misc
   (setq-local comment-column 40)
-  (setq-local local-abbrev-table racket-mode-abbrev-table)
+  (setq-local local-abbrev-table racket-abbrev-table)
   (setq-local paragraph-start (concat "$\\|" page-delimiter))
   (setq-local paragraph-separate paragraph-start)
   (setq-local paragraph-ignore-fill-prefix t)

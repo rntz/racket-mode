@@ -161,6 +161,7 @@ delete compiled/*.zo files."
 \\{racket-profile-mode-map}
 ```
 "
+  :abbrev-table nil
   (setq show-trailing-whitespace nil))
 
 (provide 'racket-profile)
