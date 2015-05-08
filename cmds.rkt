@@ -47,7 +47,10 @@
              (match (sync in ch)
                [(? input-port?) (match (read-syntax)
                                   [(? eof-object?) (void)]
-                                  [stx (handle-command stx path)
+                                  [stx (with-handlers ([exn:fail?
+                                                        (λ _ (elisp-println #f))])
+                                         (handle-command stx path
+                                                         (λ _ (elisp-println #f))))
                                        (flush-output)
                                        (loop)])]
                [(cons (? namespace? ns) (? module-path? s))
@@ -100,7 +103,7 @@
     ['nil '()]
     [x x]))
 
-(define (handle-command cmd-stx path)
+(define (handle-command cmd-stx path [usage usage])
   (let ([read elisp-read])
     (case (syntax-e cmd-stx)
       ;; These commands are intended to be used by either the user or

@@ -240,7 +240,7 @@ Assumption: There will only be one."
 The result can be nil if the REPL is not started, or if it is
 running no particular file as with the `,top` command."
   (when (comint-check-proc racket--repl-buffer-name)
-    (racket--repl-cmd/sexpr ",path")))
+    (racket--repl-command "path")))
 
 (defun racket-repl-switch-to-edit ()
   "Switch to the window for the buffer of the file running in the REPL.
@@ -272,7 +272,8 @@ Intended for use by things like ,run command."
   "Default timeout when none supplied to `racket--repl-cmd/buffer' and friends.")
 
 (defun racket--repl-command (str &optional timeout)
-  "Send STR to the process and read/return the sexp response."
+  "Send STR to the Racket process and return the response sexp.
+Do not prefix the command with a `,'."
   (racket--repl-ensure-buffer-and-process)
   (let ((proc (racket--repl-commmand-connection-process)))
     (unless proc
@@ -298,16 +299,6 @@ Intended for use by things like ,run command."
                (let ((result (buffer-substring (point-min) (point-max))))
                  (delete-region (point-min) (point-max))
                  (eval (read result)))))))))
-
-(defun racket--repl-cmd/string (command &optional timeout)
-  "TODO: Convert all callers of this to racket--repl-command."
-  ;; Slice off the leading ,
-  (racket--repl-command (substring command 1) timeout))
-
-(defun racket--repl-cmd/sexpr (command &optional timeout)
-  "TODO: Convert all callers of this to racket--repl-command."
-  ;; Slice off the leading ,
-  (racket--repl-command (substring command 1) timeout))
 
 ;;;
 

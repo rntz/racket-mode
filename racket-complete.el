@@ -35,7 +35,7 @@ See `racket--invalidate-completion-cache' and
   "Get Racket namespace symbols from the cache or from the Racket process."
   (unless racket--namespace-symbols
     (setq racket--namespace-symbols
-          (racket--repl-cmd/sexpr ",syms")))
+          (racket--repl-command "syms")))
   racket--namespace-symbols)
 
 (defun racket--complete-prefix (prefix)
@@ -120,7 +120,7 @@ See `racket--invalidate-completion-cache' and
   (let* ((sym (intern str))
          (v (gethash sym racket--type-cache)))
     (or v
-        (let ((v (racket--repl-cmd/sexpr (concat ",type " str))))
+        (let ((v (racket--repl-command (concat "type " str))))
           (puthash sym v racket--type-cache)
           v))))
 

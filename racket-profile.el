@@ -44,7 +44,7 @@ delete compiled/*.zo files."
   (when (eq major-mode 'racket-mode)
     (message "Running with profiling instrumentation and getting results...")
     (racket--do-run 'profile)
-    (setq racket--profile-results (racket--repl-cmd/sexpr ",get-profile"))
+    (setq racket--profile-results (racket--repl-command "get-profile"))
     (setq racket--profile-sort-col 1)
     (with-current-buffer (get-buffer-create "*Racket Profile*")
       (racket-profile-mode)
@@ -54,7 +54,7 @@ delete compiled/*.zo files."
 
 (defun racket--profile-refresh ()
   (interactive)
-  (setq racket--profile-results (racket--repl-cmd/sexpr ",get-profile"))
+  (setq racket--profile-results (racket--repl-command "get-profile"))
   (racket--profile-draw))
 
 (defun racket--profile-draw ()

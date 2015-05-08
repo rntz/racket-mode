@@ -154,7 +154,7 @@ See also:
   (if (not coverage)
       (message "Tests done.")
     (message "Checking coverage results...")
-    (let ((xs (racket--repl-cmd/sexpr ",get-uncovered")))
+    (let ((xs (racket--repl-command "get-uncovered")))
       (dolist (x xs)
         (let ((beg (car x))
               (end (cdr x)))
@@ -214,7 +214,7 @@ will tell you so but won't visit the definition site."
 
 (defun racket--do-visit-def-or-mod (cmd sym)
   "CMD must be \"def\" or \"mod\". SYM must be `symbolp`."
-  (let ((result (racket--repl-cmd/sexpr (format ",%s %s\n\n" cmd sym))))
+  (let ((result (racket--repl-command (format "%s %s\n\n" cmd sym))))
     (cond ((and (listp result) (= (length result) 3))
            (racket--push-loc)
            (cl-destructuring-bind (path line col) result
@@ -231,7 +231,7 @@ will tell you so but won't visit the definition site."
 
 (defun racket--get-def-file+line (sym)
   "For use by company-mode 'location option."
-  (let ((result (racket--repl-cmd/sexpr (format ",def %s\n\n" sym))))
+  (let ((result (racket--repl-command (format "def %s\n\n" sym))))
     (cond ((and (listp result) (= (length result) 3))
            (cl-destructuring-bind (path line col) result
              (cons path line)))
@@ -272,7 +272,7 @@ instead of looking at point."
   (interactive "P")
   (let ((sym (racket--symbol-at-point-or-prompt prefix "Racket help for: ")))
     (when sym
-      (racket--repl-cmd/string (format ",doc %s" sym)))))
+      (racket--repl-command (format "doc %s" sym)))))
 
 (defvar racket--loc-stack '())
 
@@ -331,7 +331,7 @@ Returns the buffer in which the description was written."
     (racket-describe-mode)
     (read-only-mode -1)
     (erase-buffer)
-    (let ((html (racket--repl-cmd/string (format ",describe %s" sym)))
+    (let ((html (racket--repl-command (format "describe %s" sym)))
           (spc (string #x2020))) ;unlikely character (hopefully)
       ;; Emacs shr renderer removes leading &nbsp; from <td> elements
       ;; -- which messes up the indentation of s-expressions including
@@ -532,11 +532,11 @@ See also: `racket-trim-requires' and `racket-base-requires'."
          (beg (nth 0 result))
          (reqs (nth 1 result))
          (new (and beg reqs
-                   (racket--repl-cmd/string
-                    (format ",requires/tidy %S" reqs)))))
+                   (racket--repl-command
+                    (format "requires/tidy %S" reqs)))))
     (when new
       (goto-char beg)
-      (insert (concat (read new) "\n")))))
+      (insert (concat new "\n")))))
 
 (defun racket-trim-requires ()
   "Like `racket-tidy-requires' but also deletes unused modules.
@@ -555,17 +555,15 @@ See also: `racket-base-requires'."
          (beg (nth 0 result))
          (reqs (nth 1 result))
          (new (and beg reqs
-                   (racket--repl-cmd/string
-                    (format ",requires/trim \"%s\" %S"
+                   (racket--repl-command
+                    (format "requires/trim \"%s\" %S"
                             (substring-no-properties (buffer-file-name))
-                            reqs))))
-         (new (and new
-                   (condition-case () (read new)
-                     (error (revert-buffer t t t) ;restore original requires
-                            (error "Can't do, source file has error"))))))
-    (when new
-      (goto-char beg)
-      (insert (concat new "\n")))))
+                            reqs)))))
+    (unless new
+      (revert-buffer t t t) ;restore original requires
+      (user-error "Can't do, source file has error"))
+    (goto-char beg)
+    (insert (concat new "\n"))))
 
 (defun racket-base-requires ()
   "Change from `#lang racket` to `#lang racket/base`.
@@ -601,15 +599,14 @@ such as changing `#lang typed/racket` to `#lang typed/racket/base`."
                   (save-excursion
                     (goto-char 0) (forward-line 1) (insert "\n") (point))))
          (reqs (nth 1 result))
-         (new (racket--repl-cmd/string
-               (format ",requires/base \"%s\" %S"
+         (new (racket--repl-command
+               (format "requires/base \"%s\" %S"
                        (substring-no-properties (buffer-file-name))
-                       reqs)))
-         (new (and new
-                   (condition-case () (read new)
-                     (error (revert-buffer t t t) ;restore original requires
-                            (error "Can't do, source file has error"))))))
-    (when new
+                       reqs))))
+    (unless new
+      (revert-buffer t t t) ;restore original requires
+      (user-error "Can't do, source file has error"))
+    (unless (equal new "")
       (goto-char beg)
       (insert (concat new "\n")))
     (goto-char (point-min))
@@ -822,7 +819,7 @@ special commands to navigate among the definition and its uses.
 (defun racket--check-syntax-start ()
   (racket-run) ;ensure REPL is evaluating this buffer
   (message "Analyzing...")
-  (let ((xs (racket--repl-cmd/sexpr (format ",check-syntax\n\n"))))
+  (let ((xs (racket--repl-command (format "check-syntax\n\n"))))
     (unless xs
       (error "Requires a newer version of Racket."))
     (with-silent-modifications
