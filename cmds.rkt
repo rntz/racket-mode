@@ -38,10 +38,9 @@
     (λ (port)
       (thread
        (λ ()
-         (define listener (tcp-listen port 5 #t))
-         (let listen ()
-           (define-values (in out) (tcp-accept listener))
-           (display-commented (format "command server connection port ~a" port))
+         (let connect ()
+           (define-values (in out) (tcp-connect "127.0.0.1" port))
+           ;;(display-commented (format "command server connection port ~a" port))
            (current-input-port in)
            (current-output-port out)
            (let loop ()
@@ -52,18 +51,18 @@
                                        (flush-output)
                                        (loop)])]
                [(cons (? namespace? ns) (? module-path? s))
-                (display-commented (format "command server attach path ~a" s))
+                ;;(display-commented (format "command server attach path ~a" s))
                 (set! path s)
                 (current-namespace ns)
                 (loop)]
                [(cons (? namespace? ns) #f)
-                (display-commented (format "command server attach path ~a" #f))
+                ;;(display-commented (format "command server attach path ~a" #f))
                 (set! path #f)
                 (current-namespace ns)
                 (loop)]))
            (close-input-port in)
            (close-output-port out)
-           (listen))))
+           (connect))))
       (void))))
 
 (define (attach-command-server! ns path)
@@ -337,7 +336,8 @@
             (λ () (find-help (namespace-syntax-introduce stx))))
      [(pregexp "Sending to web browser") #t])
    #:catch exn:fail? _
-   (search-for (list (~a (syntax->datum stx))))))
+   (search-for (list (~a (syntax->datum stx)))))
+  (elisp-println "ok"))
 
 (define (cd s)
   (let ([old-wd (current-directory)])

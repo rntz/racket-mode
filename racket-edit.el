@@ -361,7 +361,7 @@ Returns the buffer in which the description was written."
        "Documentation in Browser"
        'action
        `(lambda (btn)
-          (racket--repl-cmd/buffer
+          (racket--repl-command
            ,(substring-no-properties (format ",doc %s\n" sym)))))
       (insert "          [q]uit"))
     (read-only-mode 1)

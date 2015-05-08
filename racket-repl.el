@@ -23,6 +23,8 @@
 (require 'comint)
 (require 'compile)
 (require 'easymenu)
+(require 'dash)
+(require 's)
 
 (defconst racket--repl-buffer-name/raw
   "Racket REPL"
@@ -167,6 +169,14 @@ Commands that don't want the REPL to be displayed can instead use
                     (file-name-directory (or load-file-name (buffer-file-name))))
   "Path to run.rkt")
 
+;; FIXME: Move to racket-custom.el
+(defcustom racket-repl-command-port 55555
+  "Port number for racket-mode commands."
+  :tag "Racket REPL Command Port"
+  :type 'integer
+  :risky t
+  :group 'racket)
+
 (defun racket--repl-ensure-buffer-and-process (&optional display)
   "Ensure Racket REPL buffer exists and has live Racket process.
 
@@ -185,10 +195,10 @@ Never changes selected window."
                      nil
                      racket--run.rkt
                      (format "%s" racket-repl-command-port))
+      (racket--repl-command-serve-start)
       ;; Display now so users see startup and banner sooner.
       (when display
         (display-buffer (current-buffer)))
-      (racket--repl-connect)
       ;; The following is needed to make e.g. λ work when pasted
       ;; into the comint-buffer, both directly by the user and via
       ;; the racket--repl-eval functions.
@@ -196,48 +206,33 @@ Never changes selected window."
                                  'utf-8 'utf-8)
       (racket-repl-mode))))
 
-(defcustom racket-repl-command-port 55555
-  "Port number for racket-mode commands.")
+(defun racket--repl-command-serve-start ()
+  "Start a TCP server to which the Racket backend connects for commands."
+  (racket--repl-command-serve-stop) ;in case already running
 
-(defvar racket--repl-command-process nil)
+  (make-network-process :name "racket-command"
+                        :server t
+                        :host "127.0.0.1"
+                        :buffer " *racket-command*"
+                        :service racket-repl-command-port
+                        :coding 'utf-8))
 
-(defun racket--repl-connect ()
-  (sit-for 5) ;; FIXME: Wait for prompt? OR, make us a server not a client?
-  (setq racket--repl-command-process
-        (open-network-stream "racket-command"
-                             (get-buffer-create " *racket-command-output*")
-                             "127.0.0.1"
-                             racket-repl-command-port)))
+(defun racket--repl-command-serve-stop ()
+  "Delete the listener process and all connection processes."
+  (-map #'delete-process
+        (-filter (lambda (proc)
+                   (and (s-starts-with-p "racket-command" (process-name proc))
+                        proc))
+                 (process-list))))
 
-(defun racket--repl-disconnect ()
-  (delete-process racket--repl-command-process)
-  (setq racket--repl-command-process nil))
-
-(defun racket-repl-send-command (str &optional timeout)
-  "Send STR to the process and read a sexp."
-  (let ((proc racket--repl-command-process))
-    (with-current-buffer (process-buffer proc)
-      (delete-region (point-min) (point-max))
-      (process-send-string proc (concat str "\n"))
-      (let ((deadline (+ (float-time) (or timeout racket--repl-command-timeout))))
-        (while (and (memq (process-status proc) '(open run))
-                    (< (float-time) deadline)
-                    (or (condition-case ()
-                            (progn
-                              (goto-char (point-min))
-                              (forward-sexp 1)
-                              (= (point) (point-min)))
-                          (scan-error t))))
-          (accept-process-output nil 0.05)
-          (sit-for 0.1))
-        (cond ((not (memq (process-status proc) '(open run)))
-               (error "command process died"))
-              ((= (point-min) (point))
-               (error "no response from command process"))
-              (t
-               (let ((result (buffer-substring (point-min) (point-max))))
-                 (delete-region (point-min) (point-max))
-                 (read result))))))))
+(defun racket--repl-commmand-connection-process ()
+  "Find the racket-command connection process.
+Assumption: There will only be one."
+  (-some (lambda (proc)
+           (and (s-starts-with-p "racket-command" (process-name proc))
+                (memq (process-status proc) '(open run)) ;not 'listen
+                proc))
+         (process-list)))
 
 (defun racket-repl-file-name ()
   "Return the file running in the buffer, or nil.
@@ -272,44 +267,47 @@ Intended for use by things like ,run command."
   (comint-send-string (racket--get-repl-buffer-process) expression)
   (racket--repl-show-and-move-to-end))
 
+;; FIXME: Change to defcustom and move to racket-custom.el
 (defconst racket--repl-command-timeout 10
   "Default timeout when none supplied to `racket--repl-cmd/buffer' and friends.")
 
-(defun racket--repl-cmd/buffer (command &optional timeout)
-  "Send COMMAND capturing its input in the returned buffer.
-
-Expects COMMAND to already include the comma/unquote prefix: `,command`.
-
-Prepends a `#` to make it `#,command`. This causes output to be
-redirected to `racket--repl-command-output-file'. When that file
-comes into existence, the command has completed and we read its
-contents into a buffer."
+(defun racket--repl-command (str &optional timeout)
+  "Send STR to the process and read/return the sexp response."
   (racket--repl-ensure-buffer-and-process)
-  (when (file-exists-p racket--repl-command-output-file)
-    (delete-file racket--repl-command-output-file))
-  (comint-send-string (racket--get-repl-buffer-process)
-                      (concat "#" command "\n")) ;e.g. #,command
-  (let ((deadline (+ (float-time) (or timeout racket--repl-command-timeout))))
-    (while (and (not (file-exists-p racket--repl-command-output-file))
-                (< (float-time) deadline))
-      (accept-process-output (get-buffer-process racket--repl-buffer-name)
-                             (- deadline (float-time)))
-      (sit-for 0))) ;let REPL output be drawn
-  (unless (file-exists-p racket--repl-command-output-file)
-    (error "Command timed out"))
-  (let ((buf (get-buffer-create " *Racket Command Output*")))
-    (with-current-buffer buf
-      (erase-buffer)
-      (insert-file-contents racket--repl-command-output-file)
-      (delete-file racket--repl-command-output-file))
-    buf))
+  (let ((proc (racket--repl-commmand-connection-process)))
+    (unless proc
+      (error "command process dead"))
+    (with-current-buffer (process-buffer proc)
+      (delete-region (point-min) (point-max))
+      (process-send-string proc (concat str "\n"))
+      (let ((deadline (+ (float-time) (or timeout racket--repl-command-timeout))))
+        (while (and (memq (process-status proc) '(open run))
+                    (< (float-time) deadline)
+                    (or (condition-case ()
+                            (progn
+                              (goto-char (point-min))
+                              (forward-sexp 1)
+                              (= (point) (point-min)))
+                          (scan-error t))))
+          (accept-process-output nil 0.05))
+        (cond ((not (memq (process-status proc) '(open run)))
+               (error "command process died"))
+              ((= (point-min) (point))
+               (error "no response from command process"))
+              (t
+               (let ((result (buffer-substring (point-min) (point-max))))
+                 (delete-region (point-min) (point-max))
+                 (eval (read result)))))))))
 
 (defun racket--repl-cmd/string (command &optional timeout)
-  (with-current-buffer (racket--repl-cmd/buffer command timeout)
-    (buffer-substring (point-min) (point-max))))
+  "TODO: Convert all callers of this to racket--repl-command."
+  ;; Slice off the leading ,
+  (racket--repl-command (substring command 1) timeout))
 
 (defun racket--repl-cmd/sexpr (command &optional timeout)
-  (eval (read (racket--repl-cmd/string command timeout))))
+  "TODO: Convert all callers of this to racket--repl-command."
+  ;; Slice off the leading ,
+  (racket--repl-command (substring command 1) timeout))
 
 ;;;
 
