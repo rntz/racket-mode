@@ -2,6 +2,7 @@
 
 (require help/help-utils
          macro-debugger/analysis/check-requires
+         racket/async-channel
          racket/format
          racket/function
          racket/list
@@ -10,6 +11,7 @@
          racket/pretty
          racket/set
          racket/string
+         racket/tcp
          syntax/modresolve
          (only-in xml xexpr->string)
          "channel.rkt"
@@ -22,30 +24,50 @@
          "util.rkt")
 
 (provide make-prompt-read
-         current-command-output-file
+         start-command-server!
+         attach-command-server!
          display-prompt)
 
 (module+ test
   (require rackunit))
 
-;; Commands intended for use programmatically by racket-mode may
-;; output their results to a file whose name is the value of the
-;; current-command-output-file parameter. This avoids mixing with
-;; stdout and stderr, which ultimately is not very reliable. How does
-;; racket-mode know when the file is ready to be read? 1. racket-mode
-;; deletes the file, calls us, and waits for the file to exist. 2. We
-;; direct the command's output to a temporary file (on the same fs),
-;; then when the command has finished, rename the temp file to
-;; current-command-output-file. This way, racket-mode knows that as
-;; soon as the file exists again, the command is finished and its
-;; output is ready to be read from the file.
-(define current-command-output-file (make-parameter #f))
-(define (with-output-to-command-output-file f)
-  (cond [(current-command-output-file)
-         (define tmp-file (path-add-suffix (current-command-output-file) ".tmp"))
-         (with-output-to-file tmp-file #:exists 'replace f)
-         (rename-file-or-directory tmp-file (current-command-output-file) #t)]
-        [else (f)]))
+(define ch (make-async-channel))
+
+(define start-command-server!
+  (let ([path #f])
+    (λ (port)
+      (thread
+       (λ ()
+         (define listener (tcp-listen port 5 #t))
+         (let listen ()
+           (define-values (in out) (tcp-accept listener))
+           (display-commented (format "command server connection port ~a" port))
+           (current-input-port in)
+           (current-output-port out)
+           (let loop ()
+             (match (sync in ch)
+               [(? input-port?) (match (read-syntax)
+                                  [(? eof-object?) (void)]
+                                  [stx (handle-command stx path)
+                                       (flush-output)
+                                       (loop)])]
+               [(cons (? namespace? ns) (? module-path? s))
+                (display-commented (format "command server attach path ~a" s))
+                (set! path s)
+                (current-namespace ns)
+                (loop)]
+               [(cons (? namespace? ns) #f)
+                (display-commented (format "command server attach path ~a" #f))
+                (set! path #f)
+                (current-namespace ns)
+                (loop)]))
+           (close-input-port in)
+           (close-output-port out)
+           (listen))))
+      (void))))
+
+(define (attach-command-server! ns path)
+  (async-channel-put ch (cons ns path)))
 
 (define ((make-prompt-read path))
   (define-values (base name _) (cond [path (split-path path)]
@@ -54,12 +76,6 @@
   (define in ((current-get-interaction-input-port)))
   (define stx ((current-read-interaction) (object-name in) in))
   (syntax-case stx ()
-    ;; #,command redirect
-    [(uq cmd)
-     (eq? 'unsyntax (syntax-e #'uq))
-     (with-output-to-command-output-file
-       (λ () (handle-command #'cmd path)))]
-    ;; ,command normal
     [(uq cmd)
      (eq? 'unquote (syntax-e #'uq))
      (handle-command #'cmd path)]
@@ -210,8 +226,7 @@
 (define (info)
   (displayln @~a{Memory Limit:   @(current-mem)
                  Pretty Print:   @(current-pp?)
-                 Error Context:  @(current-ctx-lvl)
-                 Command Output: @(current-command-output-file)}))
+                 Error Context:  @(current-ctx-lvl)}))
 
 ;;; misc other commands
 
@@ -284,7 +299,8 @@
 ;; for Typed Racket type or a contract, if any.
 
 (define (describe stx)
-  (display (describe* stx)))
+  (write (describe* stx))
+  (newline))
 
 (define (describe* _stx)
   (define stx (namespace-syntax-introduce _stx))

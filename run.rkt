@@ -14,8 +14,8 @@
          "util.rkt")
 
 (module+ main
-  (command-line #:args (command-output-file)
-                (current-command-output-file command-output-file))
+  (command-line #:args (command-port)
+                (start-command-server! (string->number command-port)))
   ;; Emacs on Windows comint-mode needs buffering disabled
   (when (eq? (system-type 'os) 'windows)
     (file-stream-buffer-mode (current-output-port) 'none))
@@ -80,16 +80,18 @@
         ;; 1. Start logger display thread.
         (start-log-receiver)
         ;; 2. If module, load its lang info, require, and enter its namespace.
-        (when (and path (module-path? path))
-          (parameterize ([current-module-name-resolver repl-module-name-resolver])
-            ;; exn:fail? during module load => re-run with "empty" module
-            (with-handlers ([exn? (λ (x)
-                                    (display-exn x)
-                                    (put/stop (struct-copy rerun rr [path #f])))])
-              (maybe-load-language-info path)
-              (namespace-require path)
-              (current-namespace (module->namespace path))
-              (check-top-interaction))))
+        (cond [(and path (module-path? path))
+               (parameterize ([current-module-name-resolver repl-module-name-resolver])
+                 ;; exn:fail? during module load => re-run with "empty" module
+                 (with-handlers ([exn? (λ (x)
+                                         (display-exn x)
+                                         (put/stop (struct-copy rerun rr [path #f])))])
+                   (maybe-load-language-info path)
+                   (namespace-require path)
+                   (current-namespace (module->namespace path))
+                   (attach-command-server! (module->namespace path) path)
+                   (check-top-interaction)))]
+              [else (attach-command-server! (current-namespace) #f)])
         ;; 3. read-eval-print-loop
         (parameterize ([current-prompt-read (make-prompt-read path)]
                        [current-module-name-resolver repl-module-name-resolver])

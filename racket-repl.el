@@ -167,10 +167,6 @@ Commands that don't want the REPL to be displayed can instead use
                     (file-name-directory (or load-file-name (buffer-file-name))))
   "Path to run.rkt")
 
-(defvar racket--repl-command-output-file
-  (make-temp-file "racket-mode-command-ouput-file")
-  "File used to collect output from commands used by racket-mode.")
-
 (defun racket--repl-ensure-buffer-and-process (&optional display)
   "Ensure Racket REPL buffer exists and has live Racket process.
 
@@ -188,16 +184,60 @@ Never changes selected window."
                      racket-racket-program
                      nil
                      racket--run.rkt
-                     racket--repl-command-output-file)
+                     (format "%s" racket-repl-command-port))
       ;; Display now so users see startup and banner sooner.
       (when display
         (display-buffer (current-buffer)))
+      (racket--repl-connect)
       ;; The following is needed to make e.g. λ work when pasted
       ;; into the comint-buffer, both directly by the user and via
       ;; the racket--repl-eval functions.
       (set-process-coding-system (get-buffer-process racket--repl-buffer-name)
                                  'utf-8 'utf-8)
       (racket-repl-mode))))
+
+(defcustom racket-repl-command-port 55555
+  "Port number for racket-mode commands.")
+
+(defvar racket--repl-command-process nil)
+
+(defun racket--repl-connect ()
+  (sit-for 5) ;; FIXME: Wait for prompt? OR, make us a server not a client?
+  (setq racket--repl-command-process
+        (open-network-stream "racket-command"
+                             (get-buffer-create " *racket-command-output*")
+                             "127.0.0.1"
+                             racket-repl-command-port)))
+
+(defun racket--repl-disconnect ()
+  (delete-process racket--repl-command-process)
+  (setq racket--repl-command-process nil))
+
+(defun racket-repl-send-command (str &optional timeout)
+  "Send STR to the process and read a sexp."
+  (let ((proc racket--repl-command-process))
+    (with-current-buffer (process-buffer proc)
+      (delete-region (point-min) (point-max))
+      (process-send-string proc (concat str "\n"))
+      (let ((deadline (+ (float-time) (or timeout racket--repl-command-timeout))))
+        (while (and (memq (process-status proc) '(open run))
+                    (< (float-time) deadline)
+                    (or (condition-case ()
+                            (progn
+                              (goto-char (point-min))
+                              (forward-sexp 1)
+                              (= (point) (point-min)))
+                          (scan-error t))))
+          (accept-process-output nil 0.05)
+          (sit-for 0.1))
+        (cond ((not (memq (process-status proc) '(open run)))
+               (error "command process died"))
+              ((= (point-min) (point))
+               (error "no response from command process"))
+              (t
+               (let ((result (buffer-substring (point-min) (point-max))))
+                 (delete-region (point-min) (point-max))
+                 (read result))))))))
 
 (defun racket-repl-file-name ()
   "Return the file running in the buffer, or nil.
