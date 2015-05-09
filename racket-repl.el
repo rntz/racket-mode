@@ -195,7 +195,6 @@ Never changes selected window."
                      nil
                      racket--run.rkt
                      (format "%s" racket-repl-command-port))
-      (racket--repl-command-serve-start)
       ;; Display now so users see startup and banner sooner.
       (when display
         (display-buffer (current-buffer)))
@@ -204,35 +203,27 @@ Never changes selected window."
       ;; the racket--repl-eval functions.
       (set-process-coding-system (get-buffer-process racket--repl-buffer-name)
                                  'utf-8 'utf-8)
-      (racket-repl-mode))))
+      (racket-repl-mode)
+      (racket--repl-command-connect))))
 
-(defun racket--repl-command-serve-start ()
-  "Start a TCP server to which the Racket backend connects for commands."
-  (racket--repl-command-serve-stop) ;in case already running
+(defvar racket--repl-command-process nil)
 
-  (make-network-process :name "racket-command"
-                        :server t
-                        :host "127.0.0.1"
-                        :buffer " *racket-command*"
-                        :service racket-repl-command-port
-                        :coding 'utf-8))
-
-(defun racket--repl-command-serve-stop ()
-  "Delete the listener process and all connection processes."
-  (-map #'delete-process
-        (-filter (lambda (proc)
-                   (and (s-starts-with-p "racket-command" (process-name proc))
-                        proc))
-                 (process-list))))
-
-(defun racket--repl-commmand-connection-process ()
-  "Find the racket-command connection process.
-Assumption: There will only be one."
-  (-some (lambda (proc)
-           (and (s-starts-with-p "racket-command" (process-name proc))
-                (memq (process-status proc) '(open run)) ;not 'listen
-                proc))
-         (process-list)))
+(defun racket--repl-command-connect ()
+  "Connect to the Racket command server.
+Delete any existing connection process, first."
+  (when racket--repl-command-process
+    (delete-process racket--repl-command-process)
+    (setq racket--repl-command-process nil))
+  ;; The command server may not be ready (Racket itself and our
+  ;; backend are still starting up) so retry. FIXME: Timeout?
+  (while (not racket--repl-command-process)
+    (condition-case ()
+        (setq racket--repl-command-process
+              (open-network-stream "racket-command"
+                                   (get-buffer-create " *racket-command-output*")
+                                   "127.0.0.1"
+                                   racket-repl-command-port))
+      (error (sit-for 0.1)))))
 
 (defun racket-repl-file-name ()
   "Return the file running in the buffer, or nil.
@@ -275,7 +266,7 @@ Intended for use by things like ,run command."
   "Send STR to the Racket process and return the response sexp.
 Do not prefix the command with a `,'."
   (racket--repl-ensure-buffer-and-process)
-  (let ((proc (racket--repl-commmand-connection-process)))
+  (let ((proc racket--repl-command-process))
     (unless proc
       (error "command process dead"))
     (with-current-buffer (process-buffer proc)

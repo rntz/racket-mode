@@ -42,8 +42,9 @@
   (void
    (thread
     (λ ()
+      (define listener (tcp-listen port 5 #t))
       (let connect ()
-        (define-values (in out) (tcp-connect "127.0.0.1" port))
+        (define-values (in out) (tcp-accept listener))
         (parameterize ([current-input-port in]
                        [current-output-port out])
           (let loop ()
