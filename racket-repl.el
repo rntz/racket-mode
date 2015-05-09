@@ -215,15 +215,16 @@ Delete any existing connection process, first."
     (delete-process racket--repl-command-process)
     (setq racket--repl-command-process nil))
   ;; The command server may not be ready (Racket itself and our
-  ;; backend are still starting up) so retry. FIXME: Timeout?
-  (while (not racket--repl-command-process)
-    (condition-case ()
-        (setq racket--repl-command-process
-              (open-network-stream "racket-command"
-                                   (get-buffer-create " *racket-command-output*")
-                                   "127.0.0.1"
-                                   racket-repl-command-port))
-      (error (sit-for 0.1)))))
+  ;; backend are still starting up) so retry.
+  (with-timeout (5 (error "Could not connect to Racket command server"))
+    (while (not racket--repl-command-process)
+      (condition-case ()
+          (setq racket--repl-command-process
+                (open-network-stream "racket-command"
+                                     (get-buffer-create " *racket-command-output*")
+                                     "127.0.0.1"
+                                     racket-repl-command-port))
+        (error (sit-for 0.1))))))
 
 (defun racket-repl-file-name ()
   "Return the file running in the buffer, or nil.
@@ -268,13 +269,13 @@ Do not prefix the command with a `,'."
   (racket--repl-ensure-buffer-and-process)
   (let ((proc racket--repl-command-process))
     (unless proc
-      (error "command process dead"))
+      (error "Racket command process: dead"))
     (with-current-buffer (process-buffer proc)
       (delete-region (point-min) (point-max))
       (process-send-string proc (concat str "\n"))
-      (let ((deadline (+ (float-time) (or timeout racket--repl-command-timeout))))
+      (with-timeout ((or timeout racket--repl-command-timeout)
+                     (error "Racket command process: timeout"))
         (while (and (memq (process-status proc) '(open run))
-                    (< (float-time) deadline)
                     (or (condition-case ()
                             (progn
                               (goto-char (point-min))
@@ -283,9 +284,9 @@ Do not prefix the command with a `,'."
                           (scan-error t))))
           (accept-process-output nil 0.05))
         (cond ((not (memq (process-status proc) '(open run)))
-               (error "command process died"))
+               (error "Racket command process: died"))
               ((= (point-min) (point))
-               (error "no response from command process"))
+               (error "Racket command process: Empty response"))
               (t
                (let ((result (buffer-substring (point-min) (point-max))))
                  (delete-region (point-min) (point-max))
