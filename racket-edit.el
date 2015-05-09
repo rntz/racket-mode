@@ -214,7 +214,7 @@ will tell you so but won't visit the definition site."
 
 (defun racket--do-visit-def-or-mod (cmd sym)
   "CMD must be \"def\" or \"mod\". SYM must be `symbolp`."
-  (let ((result (racket--repl-command (format "%s %s\n\n" cmd sym))))
+  (let ((result (racket--repl-command (format "%s %s" cmd sym))))
     (cond ((and (listp result) (= (length result) 3))
            (racket--push-loc)
            (cl-destructuring-bind (path line col) result
@@ -231,7 +231,7 @@ will tell you so but won't visit the definition site."
 
 (defun racket--get-def-file+line (sym)
   "For use by company-mode 'location option."
-  (let ((result (racket--repl-command (format "def %s\n\n" sym))))
+  (let ((result (racket--repl-command (format "def %s" sym))))
     (cond ((and (listp result) (= (length result) 3))
            (cl-destructuring-bind (path line col) result
              (cons path line)))
@@ -362,7 +362,7 @@ Returns the buffer in which the description was written."
        'action
        `(lambda (btn)
           (racket--repl-command
-           ,(substring-no-properties (format ",doc %s\n" sym)))))
+           ,(substring-no-properties (format ",doc %s" sym)))))
       (insert "          [q]uit"))
     (read-only-mode 1)
     (goto-char (point-min))
@@ -819,7 +819,7 @@ special commands to navigate among the definition and its uses.
 (defun racket--check-syntax-start ()
   (racket-run) ;ensure REPL is evaluating this buffer
   (message "Analyzing...")
-  (let ((xs (racket--repl-command (format "check-syntax\n\n"))))
+  (let ((xs (racket--repl-command (format "check-syntax"))))
     (unless xs
       (error "Requires a newer version of Racket."))
     (with-silent-modifications
