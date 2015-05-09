@@ -88,7 +88,6 @@
                                     (display-exn x)
                                     (put/stop (struct-copy rerun rr [path #f])))])
               (maybe-load-language-info path)
-              (display-commented "calling namespace-require")
               (namespace-require path)
               (current-namespace (module->namespace path))
               (attach-command-server! (current-namespace) path)
