@@ -628,6 +628,12 @@ for a specific [`racket-run`](#racket-run) using a C-u prefix. This lets you
 normally run with a faster setting, and temporarily re-run to get
 a more-helpful error message.
 
+### racket-command-port
+Port number for Racket backend command server.
+
+### racket-command-timeout
+Timeout for Racket backend command server.
+
 ## REPL
 
 ### racket-history-filter-regexp
@@ -646,9 +652,6 @@ Which system image viewer program to invoke upon M-x
 
 ### racket-pretty-print
 Use pretty-print instead of print in REPL.
-
-### racket-wait-for-prompt-timeout
-When REPL starts Racket process, how long to wait for Racket prompt.
 
 ## Other
 

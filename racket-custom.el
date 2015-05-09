@@ -32,33 +32,18 @@
 
 (defvar racket--winp (string-match "windows" (symbol-name system-type)))
 
-(defcustom racket-racket-program (cond (racket--winp "Racket.exe")
-                                       (t            "racket"))
-  "Pathname of the racket executable."
-  :tag "Racket Program"
-  :type '(file :must-match t)
-  :risky t
-  :group 'racket)
-
-(defcustom racket-raco-program (cond (racket--winp "Raco.exe")
-                                     (t            "raco"))
-  "Pathname of the raco executable."
-  :tag "Raco Program"
-  :type '(file :must-match t)
-  :risky t
-  :group 'racket)
-
-(defcustom racket-memory-limit 2048
-  "Terminate the Racket process if memory use exceeds this value in MB.
-Changes to this value take effect upon the next `racket-run'.
-
-Caveat: This uses Racket's `custodian-limit-memory`, which does
-not enforce the limit exactly. Instead, the program will be
-terminated upon the first garbage collection where memory exceeds
-the limit (maybe by a significant amount)."
-  :tag "Memory Limit"
+(defcustom racket-command-port 55555
+  "Port number for Racket backend command server."
+  :tag "Command Port"
   :type 'integer
-  :safe #'integerp
+  :risky t
+  :group 'racket)
+
+(defcustom racket-command-timeout 3
+  "Timeout for Racket backend command server."
+  :tag "Command Timeout"
+  :type 'integer
+  :risky t
   :group 'racket)
 
 (defcustom racket-error-context 'medium
@@ -87,6 +72,36 @@ a more-helpful error message."
                 (const :tag "High (much slower)" high))
   :risky t
   :group 'racket)
+
+(defcustom racket-memory-limit 2048
+  "Terminate the Racket process if memory use exceeds this value in MB.
+Changes to this value take effect upon the next `racket-run'.
+
+Caveat: This uses Racket's `custodian-limit-memory`, which does
+not enforce the limit exactly. Instead, the program will be
+terminated upon the first garbage collection where memory exceeds
+the limit (maybe by a significant amount)."
+  :tag "Memory Limit"
+  :type 'integer
+  :safe #'integerp
+  :group 'racket)
+
+(defcustom racket-racket-program (cond (racket--winp "Racket.exe")
+                                       (t            "racket"))
+  "Pathname of the racket executable."
+  :tag "Racket Program"
+  :type '(file :must-match t)
+  :risky t
+  :group 'racket)
+
+(defcustom racket-raco-program (cond (racket--winp "Raco.exe")
+                                     (t            "raco"))
+  "Pathname of the raco executable."
+  :tag "Raco Program"
+  :type '(file :must-match t)
+  :risky t
+  :group 'racket)
+
 
 ;;; REPL
 
@@ -130,13 +145,6 @@ Defaults to a regexp ignoring all inputs of 0, 1, or 2 letters."
   :tag "Pretty Print"
   :type 'boolean
   :safe #'booleanp
-  :group 'racket-repl)
-
-(defcustom racket-wait-for-prompt-timeout 30
-  "When REPL starts Racket process, how long to wait for Racket prompt."
-  :tag "Wait For Prompt Timeout"
-  :type 'number
-  :safe #'numberp
   :group 'racket-repl)
 
 

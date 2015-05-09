@@ -169,14 +169,6 @@ Commands that don't want the REPL to be displayed can instead use
                     (file-name-directory (or load-file-name (buffer-file-name))))
   "Path to run.rkt")
 
-;; FIXME: Move to racket-custom.el
-(defcustom racket-repl-command-port 55555
-  "Port number for racket-mode commands."
-  :tag "Racket REPL Command Port"
-  :type 'integer
-  :risky t
-  :group 'racket)
-
 (defun racket--repl-ensure-buffer-and-process (&optional display)
   "Ensure Racket REPL buffer exists and has live Racket process.
 
@@ -194,7 +186,7 @@ Never changes selected window."
                      racket-racket-program
                      nil
                      racket--run.rkt
-                     (format "%s" racket-repl-command-port))
+                     (format "%s" racket-command-port))
       ;; Display now so users see startup and banner sooner.
       (when display
         (display-buffer (current-buffer)))
@@ -223,7 +215,7 @@ Delete any existing connection process, first."
                 (open-network-stream "racket-command"
                                      (get-buffer-create " *racket-command-output*")
                                      "127.0.0.1"
-                                     racket-repl-command-port))
+                                     racket-command-port))
         (error (sit-for 0.1))))))
 
 (defun racket-repl-file-name ()
@@ -259,10 +251,6 @@ Intended for use by things like ,run command."
   (comint-send-string (racket--get-repl-buffer-process) expression)
   (racket--repl-show-and-move-to-end))
 
-;; FIXME: Change to defcustom and move to racket-custom.el
-(defconst racket--repl-command-timeout 10
-  "Default timeout when none supplied to `racket--repl-cmd/buffer' and friends.")
-
 (defun racket--repl-command (str &optional timeout)
   "Send STR to the Racket process and return the response sexp.
 Do not prefix the command with a `,'."
@@ -273,7 +261,7 @@ Do not prefix the command with a `,'."
     (with-current-buffer (process-buffer proc)
       (delete-region (point-min) (point-max))
       (process-send-string proc (concat str "\n"))
-      (with-timeout ((or timeout racket--repl-command-timeout)
+      (with-timeout ((or timeout racket-command-timeout)
                      (error "Racket command process: timeout"))
         (while (and (memq (process-status proc) '(open run))
                     (or (condition-case ()

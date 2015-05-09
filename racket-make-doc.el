@@ -138,13 +138,14 @@
     racket-raco-program
     racket-memory-limit
     racket-error-context
+    racket-command-port
+    racket-command-timeout
     "REPL"
     racket-history-filter-regexp
     racket-images-inline
     racket-images-keep-last
     racket-images-system-viewer
     racket-pretty-print
-    racket-wait-for-prompt-timeout
     "Other"
     racket-indent-curly-as-sequence
     racket-indent-sequence-depth
