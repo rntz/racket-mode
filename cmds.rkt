@@ -52,7 +52,7 @@
               [stx (with-handlers ([exn:fail? (λ _ (elisp-println #f))])
                      (parameterize ([current-namespace command-server-ns])
                        (handle-command stx command-server-path
-                                       (λ _ (elisp-println #f)))))
+                                       #:else (λ _ (elisp-println #f)))))
                    (flush-output)
                    (loop)])))
         (close-input-port in)
@@ -91,7 +91,7 @@
     ['nil '()]
     [x x]))
 
-(define (handle-command cmd-stx path [usage usage])
+(define (handle-command cmd-stx path #:else [usage usage])
   (let ([read elisp-read])
     (case (syntax-e cmd-stx)
       ;; These commands are intended to be used by either the user or
