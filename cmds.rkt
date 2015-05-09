@@ -31,45 +31,33 @@
 (module+ test
   (require rackunit))
 
-(define ch (make-async-channel))
-
-(define start-command-server!
-  (let ([path #f])
-    (λ (port)
-      (thread
-       (λ ()
-         (let connect ()
-           (define-values (in out) (tcp-connect "127.0.0.1" port))
-           ;;(display-commented (format "command server connection port ~a" port))
-           (current-input-port in)
-           (current-output-port out)
-           (let loop ()
-             (match (sync in ch)
-               [(? input-port?) (match (read-syntax)
-                                  [(? eof-object?) (void)]
-                                  [stx (with-handlers ([exn:fail?
-                                                        (λ _ (elisp-println #f))])
-                                         (handle-command stx path
-                                                         (λ _ (elisp-println #f))))
-                                       (flush-output)
-                                       (loop)])]
-               [(cons (? namespace? ns) (? module-path? s))
-                ;;(display-commented (format "command server attach path ~a" s))
-                (set! path s)
-                (current-namespace ns)
-                (loop)]
-               [(cons (? namespace? ns) #f)
-                ;;(display-commented (format "command server attach path ~a" #f))
-                (set! path #f)
-                (current-namespace ns)
-                (loop)]))
-           (close-input-port in)
-           (close-output-port out)
-           (connect))))
-      (void))))
+(define command-server-ns (make-base-namespace))
+(define command-server-path #f)
 
 (define (attach-command-server! ns path)
-  (async-channel-put ch (cons ns path)))
+  (set! command-server-ns ns)
+  (set! command-server-path path))
+
+(define (start-command-server! port)
+  (void
+   (thread
+    (λ ()
+      (let connect ()
+        (define-values (in out) (tcp-connect "127.0.0.1" port))
+        (parameterize ([current-input-port in]
+                       [current-output-port out])
+          (let loop ()
+            (match (read-syntax)
+              [(? eof-object?) (void)]
+              [stx (with-handlers ([exn:fail? (λ _ (elisp-println #f))])
+                     (parameterize ([current-namespace command-server-ns])
+                       (handle-command stx command-server-path
+                                       (λ _ (elisp-println #f)))))
+                   (flush-output)
+                   (loop)])))
+        (close-input-port in)
+        (close-output-port out)
+        (connect))))))
 
 (define ((make-prompt-read path))
   (define-values (base name _) (cond [path (split-path path)]
