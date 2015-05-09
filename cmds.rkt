@@ -2,7 +2,6 @@
 
 (require help/help-utils
          macro-debugger/analysis/check-requires
-         racket/async-channel
          racket/format
          racket/function
          racket/list
@@ -13,7 +12,8 @@
          racket/string
          racket/tcp
          syntax/modresolve
-         (only-in xml xexpr->string)
+         (only-in xml
+                  xexpr->string)
          "channel.rkt"
          "defn.rkt"
          "fresh-line.rkt"
