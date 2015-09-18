@@ -2,6 +2,8 @@
 
 (require help/help-utils
          macro-debugger/analysis/check-requires
+         racket/contract/base
+         racket/contract/region
          racket/format
          racket/function
          racket/list
@@ -17,6 +19,7 @@
          "fresh-line.rkt"
          "instrument.rkt"
          "logger.rkt"
+         "mod.rkt"
          "scribble.rkt"
          "try-catch.rkt"
          "util.rkt")
@@ -47,10 +50,9 @@
          (rename-file-or-directory tmp-file (current-command-output-file) #t)]
         [else (f)]))
 
-(define ((make-prompt-read path))
-  (define-values (base name _) (cond [path (split-path path)]
-                                     [else (values (current-directory) "" #f)]))
-  (display-prompt name)
+(define/contract ((make-prompt-read m))
+  (-> mod? (-> any))
+  (display-prompt (mod->prompt-string m))
   (define in ((current-get-interaction-input-port)))
   (define stx ((current-read-interaction) (object-name in) in))
   (syntax-case stx ()
@@ -58,11 +60,11 @@
     [(uq cmd)
      (eq? 'unsyntax (syntax-e #'uq))
      (with-output-to-command-output-file
-       (λ () (handle-command #'cmd path)))]
+       (λ () (handle-command #'cmd m)))]
     ;; ,command normal
     [(uq cmd)
      (eq? 'unquote (syntax-e #'uq))
-     (handle-command #'cmd path)]
+     (handle-command #'cmd m)]
     [_ stx]))
 
 (define (display-prompt str)
@@ -85,7 +87,10 @@
     ['nil '()]
     [x x]))
 
-(define (handle-command cmd-stx path)
+(define/contract (handle-command cmd-stx m)
+  (-> syntax? mod? any)
+  (match-define (mod mod-path dir file) m)
+  (define path (and file (build-path dir file)))
   (let ([read elisp-read])
     (case (syntax-e cmd-stx)
       ;; These commands are intended to be used by either the user or
@@ -105,9 +110,9 @@
       ;; racket-mode, only.
       [(path) (elisp-println (and path (path->string path)))]
       [(syms) (syms)]
-      [(def) (def (read))]
+      [(def) (def-loc (read))]
       [(describe) (describe (read-syntax))]
-      [(mod) (mod (read) path)]
+      [(mod) (mod-loc (read) mod-path)]
       [(type) (type (read))]
       [(requires/tidy) (requires/tidy (read))]
       [(requires/trim) (requires/trim (read) (read))]
@@ -169,7 +174,7 @@
   ;; can/does always supply all the args. But, may as well make it
   ;; convenient for human users, too.)
   (define (go path)
-    (put/stop (rerun (and path (~a path)) ;"/path/file" or /path/file
+    (put/stop (rerun path
                      (current-mem)
                      (current-pp?)
                      (current-ctx-lvl))))
@@ -219,18 +224,18 @@
   (elisp-println (sort (map symbol->string (namespace-mapped-symbols))
                        string<?)))
 
-(define (def sym)
+(define (def-loc sym)
   (elisp-println (find-definition (symbol->string sym))))
 
-(define (mod v rel)
-  (define (mod* mod rel)
+(define (mod-loc v rel)
+  (define (mod-loc* mod rel)
     (define path (with-handlers ([exn:fail? (λ _ #f)])
                    (resolve-module-path mod rel)))
     (and path
          (file-exists? path)
          (list (path->string path) 1 0)))
-  (elisp-println (cond [(module-path? v) (mod* v rel)]
-                       [(symbol? v)      (mod* (symbol->string v) rel)]
+  (elisp-println (cond [(module-path? v) (mod-loc* v rel)]
+                       [(symbol? v)      (mod-loc* (symbol->string v) rel)]
                        [else             #f])))
 
 (define (type v) ;; the ,type command.  rename this??
@@ -654,14 +659,14 @@
 
 ;;; coverage
 
-(define (get-uncovered path)
+(define (get-uncovered file)
   (elisp-println
    (consolidate-coverage-ranges
     (for*/list ([x (in-list (get-test-coverage-info))]
                 [covered? (in-value (first x))]
                 #:when (not covered?)
                 [src (in-value (second x))]
-                #:when (equal? path src)
+                #:when (equal? file src)
                 [pos (in-value (third x))]
                 [span (in-value (fourth x))])
       (cons pos (+ pos span))))))

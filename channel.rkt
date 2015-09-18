@@ -46,7 +46,7 @@
 (define-struct/contract msg ())
 (define-struct/contract [load-gui msg] ())
 (define-struct/contract [rerun msg]
-  ([path          (or/c #f path-string?)]
+  ([mod           any/c]
    [memory-limit  (or/c #f exact-positive-integer?)]
    [pretty-print? boolean?]
    [context-level context-level?]))
