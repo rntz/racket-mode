@@ -1,6 +1,7 @@
 #lang at-exp racket/base
 
-(require (for-syntax racket/base)
+(require (for-syntax racket/base
+                     syntax/parse)
          racket/contract/base
          racket/contract/region
          racket/format
@@ -20,31 +21,34 @@
    [file (or/c #f relative-path?)])
   #:transparent)
 
+(define/contract (->mod/simple v)
+  (-> any/c mod?)
+  (match v
+    [(? symbol? s) (->mod/simple (~a s))] ;treat 'file.rkt as "file.rkt"
+    [(or (? path? ap) (? path-string? ap))
+     (let*-values ([(dir file _) (split-path (simplify-path ap))]
+                   [(dir) (match dir ['relative (current-directory)][dir dir])])
+       (mod file dir file))]
+    [_ (mod #f (current-directory) #f)]))
+
 (define/contract (->mod v)
   (-> any/c mod?)
-  (define cd (current-directory))
+  (define-match-expander mm
+    ;; Match a value that, when applied to ->mod/simple, returns a mod
+    ;; struct with non-#f module-path and filename; bind the fields.
+    (syntax-parser
+      [(_ mp:id dir:id file:id)
+       #'(app ->mod/simple (mod (? values mp) dir (? values file)))]))
   (match v
-    [(? symbol? s) (->mod (~a s))] ;convenience treat file.rkt as "file.rkt"
-    [(? rel-path? rp)
-     (define p (string->path rp))
-     (mod p cd p)]
-    [(? abs-path? ap)
-     (define-values (base name _) (split-path (simplify-path ap)))
-     (mod name base name)]
-    [(list 'submod
-           (app ->mod (mod (? values) dir (? values file)))
-           (? symbol? ss) ..1)
-     (mod (list* 'submod file ss) dir file)]
-    [(list (app ->mod (mod (? values) dir (? values file)))
-           (? symbol? ss) ..1)
-     (mod (list* 'submod file ss) dir file)]
-    [(list (app ->mod (mod (? values mp) dir (? values file))))
-     (mod mp dir file)]
-    [_ (mod #f cd #f)]))
+    [(list 'submod (mm _  d f) (? symbol? ss) ..1) (mod (list* 'submod f ss) d f)]
+    [(list         (mm _  d f) (? symbol? ss) ..1) (mod (list* 'submod f ss) d f)]
+    [(list         (mm mp d f))                    (mod mp d f)]
+    [(mm mp d f)                                   (mod mp d f)]
+    [_                                             (mod #f (current-directory) #f)]))
 
 (module+ test
   (require rackunit)
-  (define = check-equal?)
+  (define-syntax-rule (= x y) (check-equal? x y))
   (define f.rkt (string->path "f.rkt"))
   ;; rel path
   (let ([dir (current-directory)])
@@ -70,7 +74,8 @@
   (let ([nothing (mod #f (current-directory) #f)])
     (= (->mod 42)                nothing)
     (= (->mod '(42 'bar))        nothing)
-    (= (->mod '(submod 42 'bar)) nothing)))
+    (= (->mod '(submod 42 'bar)) nothing)
+    (= (->mod '(submod (submod "f.rkt" foo) bar)) nothing)))
 
 (define/contract (->mod/existing v)
   (-> any/c mod?)
@@ -81,12 +86,6 @@
      (cond [(and mp file (file-exists? path)) v]
            [else (display-commented (format "~a does not exist" path))
                  (mod #f dir #f)])]))
-
-;; Actual predicates that accept any/c:
-(define (rel-path? v) (and (or (path-for-some-system? v) (path-string? v))
-                           (relative-path? v)))
-(define (abs-path? v) (and (or (path-for-some-system? v) (path-string? v))
-                           (absolute-path? v)))
 
 (define (mod->prompt-string m)
   (match (mod-path m)
