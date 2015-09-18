@@ -58,12 +58,11 @@ Others are available only as a command in the REPL.
 
 - `,help`: See these commands.
 
-- `,top`: Reset the REPL to \"no file\" (i.e. a base namespace).
+- `,top`: Reset the REPL to an empty module (i.e. a racket/base namespace).
 
-- `,run <file>`: Run the file. What `racket-run' uses. Either
-  `\"file.rkt\"` is `file.rkt` OK.
-
-- `,run (submod <file> <mod> ...+)`: Run a submodule.
+- `,run <module>` : What `racket-run' uses.
+  - `<module> = <file> | (<file> <submodule-id> ...)`
+  - `<file> = file.rkt | /path/to/file.rkt | \"file.rkt\" | \"/path/to/file.rkt\"`
 
 - `,exit`: Exit Racket. Handy in a `#lang` like r5rs where the
   `exit` procedure is not available. (Regardless of how Racket

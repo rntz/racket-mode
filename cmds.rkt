@@ -124,20 +124,22 @@
       [else (usage)])))
 
 (define (usage)
-  (display-commented
-   "Commands:
-,run </path/to/file.rkt> [<memory-limit-MB> [<pretty-print?> [<error-context>]]]
-   where <error-context> = low | medium | high
-,top [<memory-limit-MB> [<pretty-print?> [<error-context>]]]
-,exit
-,doc <identifier>|<string>
-,exp <stx>
-,exp+
-,exp! <stx>
-,pwd
-,cd <path>
-,log <opts> ...")
-  (void))
+  (void
+   (display-commented
+    @~a{Commands:
+        ,run <module> [<memory-limit-MB> [<pretty-print?> [<error-context>]]]
+           <module> = <file> | (<file> <submodule-id> ...)
+           <file> = file.rkt | /path/to/file.rkt | "file.rkt" | "/path/to/file.rkt"
+           <error-context> = low | medium | high
+        ,top [<memory-limit-MB> [<pretty-print?> [<error-context>]]]
+        ,exit
+        ,doc <identifier>|<string>
+        ,exp <stx>
+        ,exp+
+        ,exp! <stx>
+        ,pwd
+        ,cd <path>
+        ,log <opts> ...})))
 
 ;;; run, top, info
 
