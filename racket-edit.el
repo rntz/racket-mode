@@ -152,7 +152,7 @@ Otherwise follows the `racket-error-context' setting."
   (interactive)
   (racket--shell (concat racket-racket-program
                          " "
-                         (racket--quoted-buffer-file-name))))
+                         (shell-quote-argument (buffer-file-name)))))
 
 (defun racket-test (&optional coverage)
   "Run the `test` submodule.
@@ -200,7 +200,7 @@ To run <file>'s `test` submodule."
   (interactive)
   (racket--shell (concat racket-raco-program
                          " test -x "
-                         (racket--quoted-buffer-file-name))))
+                         (shell-quote-argument (buffer-file-name)))))
 
 (defun racket--shell (cmd)
   (let ((w (selected-window)))
