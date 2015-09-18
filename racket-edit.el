@@ -99,8 +99,9 @@ Others are available only as a command in the REPL.
 
 Supplies CONTEXT-LEVEL to the back-end ,run command; see run.rkt.
 
-If supplied, WHAT-TO-RUN should be a buffer filename, or a submod
-list. Otherwise, the `racket--what-to-run' is used."
+If supplied, WHAT-TO-RUN should be a buffer filename, or a cons
+of a file name to a list of submodule symbols. Otherwise, the
+`racket--what-to-run' is used."
   (unless (eq major-mode 'racket-mode)
     (error "Current buffer is not a racket-mode buffer"))
   (when (or (buffer-modified-p)
@@ -116,10 +117,7 @@ list. Otherwise, the `racket--what-to-run' is used."
                              context-level)))
 
 (defun racket--what-to-run ()
-  "The buffer file name, possibly in a Racket submod form."
-  (pcase (racket--submod-path)
-    ('()  (buffer-file-name))
-    (subs (cl-list* 'submod (buffer-file-name) subs))))
+  (cons (buffer-file-name) (racket--submod-path)))
 
 (defun racket--submod-path ()
   "List of module names that point is within, from outer to inner."
