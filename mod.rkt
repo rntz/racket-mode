@@ -11,14 +11,25 @@
          "util.rkt")
 
 (provide (struct-out mod)
+         relative-module-path?
          ->mod/existing
          mod->prompt-string
          maybe-warn-about-submodules)
 
+;; The subset of module-path? with a relative filename
+(define (relative-module-path? v)
+  (define (rel-path? v) ;a real predicate unlike relative-path?
+    (and (path-string? v) (relative-path? v)))
+  (and (module-path? v)
+       (match v
+         [(? rel-path?) #t]
+         [(list 'submod (? rel-path?) (? symbol?) ..1) #t]
+         [_ #f])))
+
 (define-struct/contract mod
-  ([path (or/c #f module-path?)]
-   [dir  absolute-path?]
-   [file (or/c #f relative-path?)])
+  ([rmp  (or/c #f relative-module-path?)] ;#<path:f.rkt> or '(submod <path:f.rkt> bar)
+   [dir  absolute-path?]                  ;#<path:/path/to/>
+   [file (or/c #f relative-path?)])       ;#<path:foo.rkt>
   #:transparent)
 
 (define/contract (->mod/simple v)
@@ -88,7 +99,7 @@
                  (mod #f dir #f)])]))
 
 (define (mod->prompt-string m)
-  (match (mod-path m)
+  (match (mod-rmp m)
     [#f                 ""]
     [(? path? p)        (~a p)]
     [(list* 'submod xs) (string-join (map ~a xs) ":")]))
