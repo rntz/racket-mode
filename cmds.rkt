@@ -52,7 +52,7 @@
 
 (define/contract ((make-prompt-read m))
   (-> (or/c #f mod?) (-> any))
-  (display-prompt (mod->prompt-string m))
+  (display-prompt (maybe-mod->prompt-string m))
   (define in ((current-get-interaction-input-port)))
   (define stx ((current-read-interaction) (object-name in) in))
   (syntax-case stx ()
@@ -175,8 +175,8 @@
   ;; omitted args. We're intended mainly to be used from Emacs, which
   ;; can/does always supply all the args. But, may as well make it
   ;; convenient for human users, too.)
-  (define (go path)
-    (define maybe-mod (->mod/existing path))
+  (define (go what)
+    (define maybe-mod (->mod/existing what))
     (when (or maybe-mod (eq? 'top which))
       (put/stop (rerun maybe-mod
                        (current-mem)
@@ -184,21 +184,21 @@
                        (current-ctx-lvl)))))
   (match (match which
            ['run (read-line->reads)]
-           ['top (cons #f (read-line->reads))]) ;i.e. path = #f
-    [(list path (? number? mem) (? boolean? pp?) (? context-level? ctx))
+           ['top (cons #f (read-line->reads))]) ;i.e. what = #f
+    [(list what (? number? mem) (? boolean? pp?) (? context-level? ctx))
      (current-mem mem)
      (current-pp? pp?)
      (current-ctx-lvl ctx)
-     (go path)]
-    [(list path (? number? mem) (? boolean? pp?))
+     (go what)]
+    [(list what (? number? mem) (? boolean? pp?))
      (current-mem mem)
      (current-pp? pp?)
-     (go path)]
-    [(list path (? number? mem) (? boolean? pp?))
+     (go what)]
+    [(list what (? number? mem) (? boolean? pp?))
      (current-mem mem)
-     (go path)]
-    [(list path)
-     (go path)]
+     (go what)]
+    [(list what)
+     (go what)]
     [_
      (usage)]))
 

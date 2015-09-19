@@ -10,12 +10,15 @@
          syntax/location
          "util.rkt")
 
-(provide (struct-out mod)
-         relative-module-path?
+(provide relative-module-path?
+         (struct-out mod)
          ->mod/existing
          maybe-mod->dir/file/rmp
-         mod->prompt-string
+         maybe-mod->prompt-string
          maybe-warn-about-submodules)
+
+(module+ test
+  (require rackunit))
 
 ;; The subset of module-path? with a relative filename
 (define (relative-module-path? v)
@@ -27,19 +30,19 @@
          [(list 'submod (? rel-path?) (? symbol?) ..1) #t]
          [_ #f])))
 
+(module+ test
+  (check-true (relative-module-path? "f.rkt"))
+  (check-true (relative-module-path? '(submod "f.rkt" a b)))
+  (check-false (relative-module-path? "/path/to/f.rkt"))
+  (check-false (relative-module-path? '(submod "/path/to/f.rkt" a b)))
+  (check-false (relative-module-path? 'racket/base))
+  (check-false (relative-module-path? '(submod 'racket/base a b))))
+
 (define-struct/contract mod
   ([dir  absolute-path?]         ;#<path:/path/to/>
    [file relative-path?]         ;#<path:foo.rkt>
    [rmp  relative-module-path?]) ;#<path:f.rkt> or '(submod <path:f.rkt> bar)
   #:transparent)
-
-(define/contract (maybe-mod->dir/file/rmp maybe-mod)
-  (-> (or/c #f mod?) (values absolute-path?
-                             (or/c #f relative-path?)
-                             (or/c #f relative-module-path?)))
-  (match maybe-mod
-    [(mod d f mp) (values d f mp)]
-    [#f           (values (current-directory) #f #f)]))
 
 (define/contract (->mod/simple v)
   (-> any/c (or/c #f mod?))
@@ -66,7 +69,6 @@
     [_                                    #f]))
 
 (module+ test
-  (require rackunit)
   (define-syntax-rule (= x y) (check-equal? x y))
   (define f.rkt (string->path "f.rkt"))
   ;; rel path
@@ -105,7 +107,15 @@
                  #f])]
     [_ #f]))
 
-(define/contract (mod->prompt-string m)
+(define/contract (maybe-mod->dir/file/rmp maybe-mod)
+  (-> (or/c #f mod?) (values absolute-path?
+                             (or/c #f relative-path?)
+                             (or/c #f relative-module-path?)))
+  (match maybe-mod
+    [(mod d f mp) (values d f mp)]
+    [#f           (values (current-directory) #f #f)]))
+
+(define/contract (maybe-mod->prompt-string m)
   (-> (or/c #f mod?) string?)
   (match m
     [(mod _ _ (? path? file))     (~a file)]
