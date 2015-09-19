@@ -13,12 +13,13 @@
 (provide (struct-out mod)
          relative-module-path?
          ->mod/existing
+         maybe-mod->dir/file/rmp
          mod->prompt-string
          maybe-warn-about-submodules)
 
 ;; The subset of module-path? with a relative filename
 (define (relative-module-path? v)
-  (define (rel-path? v) ;a real predicate unlike relative-path?
+  (define (rel-path? v) ;real predicate taking any/c, unlike relative-path?
     (and (path-string? v) (relative-path? v)))
   (and (module-path? v)
        (match v
@@ -27,35 +28,42 @@
          [_ #f])))
 
 (define-struct/contract mod
-  ([rmp  (or/c #f relative-module-path?)] ;#<path:f.rkt> or '(submod <path:f.rkt> bar)
-   [dir  absolute-path?]                  ;#<path:/path/to/>
-   [file (or/c #f relative-path?)])       ;#<path:foo.rkt>
+  ([dir  absolute-path?]         ;#<path:/path/to/>
+   [file relative-path?]         ;#<path:foo.rkt>
+   [rmp  relative-module-path?]) ;#<path:f.rkt> or '(submod <path:f.rkt> bar)
   #:transparent)
 
+(define/contract (maybe-mod->dir/file/rmp maybe-mod)
+  (-> (or/c #f mod?) (values absolute-path?
+                             (or/c #f relative-path?)
+                             (or/c #f relative-module-path?)))
+  (match maybe-mod
+    [(mod d f mp) (values d f mp)]
+    [#f           (values (current-directory) #f #f)]))
+
 (define/contract (->mod/simple v)
-  (-> any/c mod?)
+  (-> any/c (or/c #f mod?))
   (match v
     [(? symbol? s) (->mod/simple (~a s))] ;treat 'file.rkt as "file.rkt"
     [(or (? path? ap) (? path-string? ap))
      (let*-values ([(dir file _) (split-path (simplify-path ap))]
                    [(dir) (match dir ['relative (current-directory)][dir dir])])
-       (mod file dir file))]
-    [_ (mod #f (current-directory) #f)]))
+       (mod dir file file))]
+    [_ #f]))
 
 (define/contract (->mod v)
-  (-> any/c mod?)
+  (-> any/c (or/c #f mod?))
   (define-match-expander mm
-    ;; Match a value that, when applied to ->mod/simple, returns a mod
-    ;; struct with non-#f module-path and filename; bind the fields.
     (syntax-parser
-      [(_ mp:id dir:id file:id)
-       #'(app ->mod/simple (mod (? values mp) dir (? values file)))]))
+      [(_ dir:id file:id rmp:id)
+       #'(app ->mod/simple (mod dir file rmp))]))
   (match v
-    [(list 'submod (mm _  d f) (? symbol? ss) ..1) (mod (list* 'submod f ss) d f)]
-    [(list         (mm _  d f) (? symbol? ss) ..1) (mod (list* 'submod f ss) d f)]
-    [(list         (mm mp d f))                    (mod mp d f)]
-    [(mm mp d f)                                   (mod mp d f)]
-    [_                                             (mod #f (current-directory) #f)]))
+    [(list 'submod
+           (mm d f _) (? symbol? ss) ..1) (mod d f (list* 'submod f ss))]
+    [(list (mm d f _) (? symbol? ss) ..1) (mod d f (list* 'submod f ss))]
+    [(list (mm d f mp))                   (mod d f mp)]
+    [(mm d f mp)                          (mod d f mp)]
+    [_                                    #f]))
 
 (module+ test
   (require rackunit)
@@ -63,46 +71,46 @@
   (define f.rkt (string->path "f.rkt"))
   ;; rel path
   (let ([dir (current-directory)])
-    (= (->mod "f.rkt") (mod f.rkt dir f.rkt))
-    (= (->mod 'f.rkt)  (mod f.rkt dir f.rkt))
-    (= (->mod '(submod "f.rkt" a b)) (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '(submod f.rkt a b))   (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '("f.rkt" a b)) (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '(f.rkt a b))   (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '("f.rkt")) (mod f.rkt dir f.rkt))
-    (= (->mod '(f.rkt))   (mod f.rkt dir f.rkt)))
+    (= (->mod "f.rkt") (mod dir f.rkt f.rkt))
+    (= (->mod 'f.rkt)  (mod dir f.rkt f.rkt))
+    (= (->mod '(submod "f.rkt" a b)) (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '(submod f.rkt a b))   (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '("f.rkt" a b)) (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '(f.rkt a b))   (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '("f.rkt")) (mod dir f.rkt f.rkt))
+    (= (->mod '(f.rkt))   (mod dir f.rkt f.rkt)))
   ;; abs path
   (let ([dir (string->path "/p/t/")])
-    (= (->mod "/p/t/f.rkt") (mod f.rkt dir f.rkt))
-    (= (->mod '/p/t/f.rkt)  (mod f.rkt dir f.rkt))
-    (= (->mod '(submod "/p/t/f.rkt" a b)) (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '(submod /p/t/f.rkt a b))   (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '("/p/t/f.rkt" a b)) (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '(/p/t/f.rkt a b))   (mod `(submod ,f.rkt a b) dir f.rkt))
-    (= (->mod '("/p/t/f.rkt")) (mod f.rkt dir f.rkt))
-    (= (->mod '(/p/t/f.rkt))   (mod f.rkt dir f.rkt)))
-  ;; nonsense input => (mod #f (current-directory) #f)
-  (let ([nothing (mod #f (current-directory) #f)])
-    (= (->mod 42)                nothing)
-    (= (->mod '(42 'bar))        nothing)
-    (= (->mod '(submod 42 'bar)) nothing)
-    (= (->mod '(submod (submod "f.rkt" foo) bar)) nothing)))
+    (= (->mod "/p/t/f.rkt") (mod dir f.rkt f.rkt))
+    (= (->mod '/p/t/f.rkt)  (mod dir f.rkt f.rkt))
+    (= (->mod '(submod "/p/t/f.rkt" a b)) (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '(submod /p/t/f.rkt a b))   (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '("/p/t/f.rkt" a b)) (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '(/p/t/f.rkt a b))   (mod dir f.rkt `(submod ,f.rkt a b)))
+    (= (->mod '("/p/t/f.rkt")) (mod dir f.rkt f.rkt))
+    (= (->mod '(/p/t/f.rkt))   (mod dir f.rkt f.rkt)))
+  ;; nonsense input => #f
+  (= (->mod 42)                #f)
+  (= (->mod '(42 'bar))        #f)
+  (= (->mod '(submod 42 'bar)) #f)
+  (= (->mod '(submod (submod "f.rkt" foo) bar)) #f))
 
 (define/contract (->mod/existing v)
-  (-> any/c mod?)
+  (-> any/c (or/c #f mod?))
   (match (->mod v)
-    [(and v (mod #f dir #f)) v]
-    [(and v (mod mp dir file))
+    [(and v (mod dir file mp))
      (define path (build-path dir file))
-     (cond [(and mp file (file-exists? path)) v]
+     (cond [(file-exists? path) v]
            [else (display-commented (format "~a does not exist" path))
-                 (mod #f dir #f)])]))
+                 #f])]
+    [_ #f]))
 
-(define (mod->prompt-string m)
-  (match (mod-rmp m)
-    [#f                 ""]
-    [(? path? p)        (~a p)]
-    [(list* 'submod xs) (string-join (map ~a xs) ":")]))
+(define/contract (mod->prompt-string m)
+  (-> (or/c #f mod?) string?)
+  (match m
+    [(mod _ _ (? path? file))     (~a file)]
+    [(mod _ _ (list* 'submod xs)) (string-join (map ~a xs) ":")]
+    [#f                           ""]))
 
 ;; Check whether Racket is new enough (newer than 6.2.1) that
 ;; module->namespace works with module+ and (module* _ #f __)

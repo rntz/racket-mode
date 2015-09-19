@@ -51,7 +51,7 @@
         [else (f)]))
 
 (define/contract ((make-prompt-read m))
-  (-> mod? (-> any))
+  (-> (or/c #f mod?) (-> any))
   (display-prompt (mod->prompt-string m))
   (define in ((current-get-interaction-input-port)))
   (define stx ((current-read-interaction) (object-name in) in))
@@ -88,8 +88,8 @@
     [x x]))
 
 (define/contract (handle-command cmd-stx m)
-  (-> syntax? mod? any)
-  (match-define (mod mod-path dir file) m)
+  (-> syntax? (or/c #f mod?) any)
+  (define-values (dir file mod-path) (maybe-mod->dir/file/rmp m))
   (define path (and file (build-path dir file)))
   (let ([read elisp-read])
     (case (syntax-e cmd-stx)
@@ -176,10 +176,12 @@
   ;; can/does always supply all the args. But, may as well make it
   ;; convenient for human users, too.)
   (define (go path)
-    (put/stop (rerun path
-                     (current-mem)
-                     (current-pp?)
-                     (current-ctx-lvl))))
+    (define maybe-mod (->mod/existing path))
+    (when (or maybe-mod (eq? 'top which))
+      (put/stop (rerun maybe-mod
+                       (current-mem)
+                       (current-pp?)
+                       (current-ctx-lvl)))))
   (match (match which
            ['run (read-line->reads)]
            ['top (cons #f (read-line->reads))]) ;i.e. path = #f

@@ -29,10 +29,8 @@
     (run rerun-default)))
 
 (define (run rr) ;rerun? -> void?
-  (match-define (rerun (app ->mod/existing (and m (mod mod-path dir file)))
-                       mem-limit
-                       pretty-print?
-                       context-level) rr)
+  (match-define (rerun maybe-mod mem-limit pretty-print? context-level) rr)
+  (define-values (dir file mod-path) (maybe-mod->dir/file/rmp maybe-mod))
   ;; Always set current-directory and current-load-relative-directory
   ;; to match the source file.
   (current-directory dir)
@@ -88,19 +86,19 @@
         ;; 1. Start logger display thread.
         (start-log-receiver)
         ;; 2. If module, load its lang info, require, and enter its namespace.
-        (when (and mod-path (module-path? mod-path))
+        (when mod-path
           (parameterize ([current-module-name-resolver repl-module-name-resolver])
             ;; exn:fail? during module load => re-run with "empty" module
             (with-handlers ([exn? (λ (x)
                                     (display-exn x)
-                                    (put/stop (struct-copy rerun rr [mod #f])))])
+                                    (put/stop (struct-copy rerun rr [maybe-mod #f])))])
               (maybe-warn-about-submodules mod-path context-level)
               (maybe-load-language-info mod-path)
               (dynamic-require mod-path #f)
               (current-namespace (module->namespace mod-path))
               (check-top-interaction))))
         ;; 3. read-eval-print-loop
-        (parameterize ([current-prompt-read (make-prompt-read m)]
+        (parameterize ([current-prompt-read (make-prompt-read maybe-mod)]
                        [current-module-name-resolver repl-module-name-resolver])
           ;; Note that read-eval-print-loop catches all non-break
           ;; exceptions.
